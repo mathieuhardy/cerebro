@@ -35,13 +35,21 @@ lazy_static! {
     static ref INODE_INDEX: Mutex<u64> = Mutex::new(INODE_ROOT);
 }
 
+/// List of modes supported for the filesystem entry (files only)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Mode {
+    ReadOnly,
+    ReadWrite,
+    WriteOnly,
+}
+
 /// Filesystem entry: file or directory
 #[derive(Debug, Clone)]
 pub struct FsEntry {
     pub inode: u64,
     pub file_type: FileType,
     pub name: String,
-    pub write_only: bool,
+    pub mode: Mode,
     pub fs_entries: Vec<FsEntry>,
 }
 
@@ -51,14 +59,14 @@ impl FsEntry {
         inode: u64,
         file_type: FileType,
         name: &str,
-        write_only: bool,
+        mode: Mode,
         fs_entries: &Vec<FsEntry>) -> Self {
 
         Self {
             inode: inode,
             file_type: file_type,
             name: name.to_string(),
-            write_only: write_only,
+            mode: mode,
             fs_entries: fs_entries.to_vec(),
         }
     }
@@ -85,9 +93,10 @@ impl FsEntry {
     /// * `size` - The size in bytes of the content of the entry
     pub fn attrs(&self, size: u32) -> FileAttr {
         let perm = match self.file_type {
-            FileType::RegularFile => match self.write_only {
-                true => 0o222,
-                false => 0o444,
+            FileType::RegularFile => match self.mode {
+                Mode::WriteOnly => 0o222,
+                Mode::ReadOnly => 0o444,
+                Mode::ReadWrite => 0o666,
             },
             _ => 0o555,
         };
@@ -181,7 +190,7 @@ impl FsBackend {
                 INODE_ROOT,
                 FileType::Directory,
                 "/",
-                false,
+                Mode::ReadOnly,
                 &Vec::new()),
             modules: modules.to_vec(),
             config: config.clone(),
@@ -315,7 +324,7 @@ impl FsBackend {
             FsEntry::create_inode(),
             FileType::Directory,
             module.name(),
-            false,
+            Mode::ReadOnly,
             &module.fs_entries());
 
         FsBackend::register_custom_entries(config, &mut entry);
@@ -364,7 +373,7 @@ impl FsBackend {
                             FsEntry::create_inode(),
                             FileType::RegularFile,
                             ENTRY_JSON,
-                            false,
+                            Mode::ReadOnly,
                             &Vec::new()));
                     },
 
@@ -384,7 +393,7 @@ impl FsBackend {
                             FsEntry::create_inode(),
                             FileType::RegularFile,
                             ENTRY_SHELL,
-                            false,
+                            Mode::ReadOnly,
                             &Vec::new()));
                     },
 
@@ -684,9 +693,13 @@ impl Filesystem for Fs {
             },
         };
 
-        if entry.write_only {
-            reply.error(ENOENT);
-            return;
+        match entry.mode {
+            Mode::WriteOnly => {
+                reply.error(ENOENT);
+                return;
+            },
+
+            _ => (),
         }
 
         // Try to find the module owning this entry
@@ -783,9 +796,13 @@ impl Filesystem for Fs {
             },
         };
 
-        if ! entry.write_only {
-            reply.error(ENOENT);
-            return;
+        match entry.mode {
+            Mode::ReadOnly => {
+                reply.error(ENOENT);
+                return;
+            },
+
+            _ => (),
         }
 
         // Try to find the module owning this entry

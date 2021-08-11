@@ -111,13 +111,13 @@ impl CpuBackend {
                     logical,
                     fuse::FileType::Directory,
                     ENTRY_LOGICAL,
-                    false,
+                    filesystem::Mode::ReadOnly,
                     &vec![
                         filesystem::FsEntry::new(
                         logical_count,
                         fuse::FileType::RegularFile,
                         ENTRY_COUNT,
-                        false,
+                        filesystem::Mode::ReadOnly,
                         &Vec::new())
                     ]),
 
@@ -125,13 +125,13 @@ impl CpuBackend {
                     physical,
                     fuse::FileType::Directory,
                     ENTRY_PHYSICAL,
-                    false,
+                    filesystem::Mode::ReadOnly,
                     &vec![
                         filesystem::FsEntry::new(
                         physical_count,
                         fuse::FileType::RegularFile,
                         ENTRY_COUNT,
-                        false,
+                        filesystem::Mode::ReadOnly,
                         &Vec::new())
                     ]),
                 ],
@@ -241,13 +241,13 @@ impl CpuBackend {
                             filesystem::FsEntry::create_inode(),
                             fuse::FileType::Directory,
                             &format!("{}", i),
-                            false,
+                            filesystem::Mode::ReadOnly,
                             &vec![
                                 filesystem::FsEntry::new(
                                     filesystem::FsEntry::create_inode(),
                                     fuse::FileType::RegularFile,
                                     ENTRY_TEMPERATURE,
-                                    false,
+                                    filesystem::Mode::ReadOnly,
                                     &Vec::new()),
                             ]));
                 }
@@ -395,13 +395,13 @@ impl CpuBackend {
                     filesystem::FsEntry::create_inode(),
                     fuse::FileType::Directory,
                     &format!("{}", i),
-                    false,
+                    filesystem::Mode::ReadOnly,
                     &vec![
                         filesystem::FsEntry::new(
                             filesystem::FsEntry::create_inode(),
                             fuse::FileType::RegularFile,
                             ENTRY_USAGE,
-                            false,
+                            filesystem::Mode::ReadOnly,
                             &Vec::new()),
                     ]));
         }

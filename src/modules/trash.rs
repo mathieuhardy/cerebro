@@ -192,14 +192,14 @@ impl Trash {
                     count,
                     fuse::FileType::RegularFile,
                     ENTRY_COUNT,
-                    false,
+                    filesystem::Mode::ReadOnly,
                     &Vec::new()),
 
                 filesystem::FsEntry::new(
                     empty,
                     fuse::FileType::RegularFile,
                     ENTRY_EMPTY,
-                    true,
+                    filesystem::Mode::WriteOnly,
                     &Vec::new())
                 ],
         }

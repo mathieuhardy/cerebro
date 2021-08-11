@@ -166,21 +166,21 @@ impl Battery {
                     plugged,
                     fuse::FileType::RegularFile,
                     ENTRY_PLUGGED,
-                    false,
+                    filesystem::Mode::ReadOnly,
                     &Vec::new()),
 
                 filesystem::FsEntry::new(
                     percent,
                     fuse::FileType::RegularFile,
                     ENTRY_PERCENT,
-                    false,
+                    filesystem::Mode::ReadOnly,
                     &Vec::new()),
 
                 filesystem::FsEntry::new(
                     time_remaining,
                     fuse::FileType::RegularFile,
                     ENTRY_TIME_REMAINING,
-                    false,
+                    filesystem::Mode::ReadOnly,
                     &Vec::new()),
                 ],
         }

@@ -53,7 +53,7 @@ impl BrightnessBackend {
                     filesystem::FsEntry::create_inode(),
                     fuse::FileType::RegularFile,
                     &d.device,
-                    false,
+                    filesystem::Mode::ReadOnly,
                     &Vec::new()));
         }
 

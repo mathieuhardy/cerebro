@@ -1,9 +1,12 @@
-use async_mutex;
-use brightness::Brightness;
 use fuse;
-use futures::{executor, TryStreamExt};
+use notify::Watcher;
 use serde::{Serialize};
+use std::fs;
+use std::io;
+use std::path;
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
+use walkdir;
 
 use crate::config;
 use crate::error;
@@ -12,19 +15,111 @@ use crate::filesystem;
 use crate::modules::module;
 use crate::triggers;
 
-
 const MODULE_NAME: &str = "brightness";
 
 const VALUE_UNKNOWN: &str = "?";
 
-//const ENTRY_PLUGGED: &str = "plugged";
+const ENTRY_VALUE: &str = "value";
+const ENTRY_CURRENT_VALUE: &str = "current_value";
 
 /// Information about the brightness
-#[derive(Clone, Debug, Serialize)]
+#[derive(Serialize)]
 struct BrightnessData
 {
     pub device: String,
     pub value: String,
+    pub current_value: String,
+}
+
+/// Proxy backend that is only use in the context of the thread
+struct BrightnessBackendProxy {
+    backend: Arc<Mutex<BrightnessBackend>>,
+}
+
+impl BrightnessBackendProxy {
+    fn new(backend: Arc<Mutex<BrightnessBackend>>) -> Self {
+        Self {
+            backend: backend,
+        }
+    }
+}
+
+impl module::Data for BrightnessBackendProxy {
+    /// Update trash data
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - The instance handle
+    fn update(&mut self) -> Result<module::Status, error::CerebroError> {
+        // Check if the fileystem needs to be built
+        let status = match self.backend.lock() {
+            Ok(mut b) => b.build_filesystem()?,
+            Err(_) => return error!("Cannot lock backend"),
+        };
+
+        match status {
+            module::Status::Changed(_) => return Ok(status),
+            _ => (),
+        }
+
+        // Get entries
+        let root = path::Path::new("/")
+            .join("sys")
+            .join("class")
+            .join("backlight");
+
+        let devices = fs::read_dir(&root).unwrap();
+
+        // Create watcher
+        let (tx, rx) = mpsc::channel();
+
+        let mut w: notify::INotifyWatcher = match notify::Watcher::new_raw(tx) {
+            Ok(w) => w,
+            Err(_) => return error!("Cannot create filesystem watcher"),
+        };
+
+        // Watch each device
+        for device in devices {
+            let device = match device {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+
+            let path = root.join(device.file_name()).join("brightness");
+
+            if ! path.exists() {
+                continue;
+            }
+
+            match w.watch(&path, notify::RecursiveMode::NonRecursive) {
+                Ok(_) => (),
+                Err(_) => return error!("Cannot add path to watch"),
+            }
+
+            println!("+++ watch {:?}", path);
+        }
+
+        loop {
+            let event = match rx.recv() {
+                Ok(e) => e,
+                Err(_) => return error!("Error during watching filesystem"),
+            };
+
+            println!("!!!! {:#?}", event);
+
+            //let op = match event.op {
+                //Ok(o) => o,
+                //Err(_) => return error!("Watch event returned an error"),
+            //};
+
+            //match op {
+                //notify::Op::CREATE | notify::Op::CLOSE_WRITE => (),
+                //_ => continue,
+            //}
+
+            //self.update_count()?;
+        }
+    }
 }
 
 /// Brightness backend that will compute the values
@@ -44,164 +139,144 @@ impl BrightnessBackend {
         }
     }
 
-    fn rebuild_fs_entries(&mut self) -> error::CerebroResult {
-        self.fs_entries.clear();
-
-        for d in self.data.iter() {
-            self.fs_entries.push(
-                filesystem::FsEntry::new(
-                    filesystem::FsEntry::create_inode(),
-                    fuse::FileType::RegularFile,
-                    &d.device,
-                    filesystem::Mode::ReadOnly,
-                    &Vec::new()));
-        }
-
-        return Success!();
-    }
-
-    fn update_brightness_values(&mut self, data: &Vec<BrightnessData>)
+    fn build_filesystem(&mut self)
         -> Result<module::Status, error::CerebroError> {
 
-        let mut changed: bool = false;
-
-        if self.data.len() != data.len() {
-            changed = true;
-        }
-        else {
-            for d in data.iter() {
-                match self.data.iter().find(|&x| x.device == d.device) {
-                    Some(_) => (),
-                    None => {
-                        changed = true;
-                        break;
-                    },
-                }
-            }
+        if ! self.fs_entries.is_empty() {
+            return Ok(module::Status::Ok);
         }
 
-        // If changed: clear the list and assign the new one
-        if changed {
-            // Call delete triggers
-            for data in self.data.iter() {
-                triggers::find_all_and_execute(
-                    &self.triggers,
-                    triggers::Kind::Delete,
-                    MODULE_NAME,
-                    &format!("{}", data.device));
-            }
+        let root = path::Path::new("/")
+            .join("sys")
+            .join("class")
+            .join("backlight");
 
-            // Rebuild list
-            self.data = data.to_vec();
+        let devices = fs::read_dir(&root).unwrap();
 
-            // Call create triggers
-            for data in self.data.iter() {
-                triggers::find_all_and_execute(
-                    &self.triggers,
-                    triggers::Kind::Create,
-                    MODULE_NAME,
-                    &format!("{}", data.device));
-            }
+        // Build data
+        self.data.clear();
 
-            // Rebuild filesystem entries
-            self.rebuild_fs_entries()?;
+        for device in devices {
+            let name = match device {
+                Ok(d) => d.file_name(),
+                Err(_) => continue,
+            };
 
-            return Ok(module::Status::Changed(MODULE_NAME.to_string()));
-        }
+            let name = match name.into_string() {
+                Ok(n) => n,
+                Err(_) => continue,
+            };
 
-        // Simply update values
-        for d in data.iter() {
-            match self.data.iter_mut().find(|x| x.device == d.device) {
-                Some(entry) => {
-                    entry.value = d.value.clone();
-
-                    triggers::find_all_and_execute(
-                        &self.triggers,
-                        triggers::Kind::Update,
-                        MODULE_NAME,
-                        &format!("{}", entry.device));
+            let value_path = root.join(&name).join("brightness");
+            let value = match fs::read_to_string(&value_path) {
+                Ok(v) => v.replace("\n", ""),
+                Err(_) => {
+                    println!("Cannot read content of: {:?}", value_path);
+                    continue;
                 },
+            };
 
-                None => return error!("Device entry must be found"),
-            }
-        }
+            let current_value_path = root.join(&name).join("actual_brightness");
+            let current_value = match fs::read_to_string(&current_value_path) {
+                Ok(v) => v.replace("\n", ""),
+                Err(_) => {
+                    println!("Cannot read content of: {:?}", value_path);
+                    continue;
+                },
+            };
 
-        return Ok(module::Status::Ok);
-    }
-
-    async fn fetch_brightness_values(
-        &mut self,
-        data: &Arc<async_mutex::Mutex<Vec<BrightnessData>>>)
-        -> error::CerebroResult {
-
-        let stream = brightness::brightness_devices();
-
-        let task = stream.try_for_each(|dev| async move {
-            let mut data = data.lock().await;
-
-            data.push(BrightnessData{
-                device: dev.device_name().await?,
-                value: format!("{}", dev.get().await?),
+            self.data.push(BrightnessData{
+                device: name,
+                value: value,
+                current_value: current_value,
             });
-
-            return Ok(());
-        });
-
-        return match task.await {
-            Ok(_) => Success!(),
-            Err(_) => error!("Error during fetching of brightness"),
         }
-    }
-}
 
-impl module::Data for BrightnessBackend {
-    /// Update brightness data
-    ///
-    /// # Arguments
-    ///
-    /// * `self` - The instance handle
-    fn update(&mut self) -> Result<module::Status, error::CerebroError> {
-        let data = Arc::new(async_mutex::Mutex::new(Vec::new()));
+        // Build filesystem
+        for data in self.data.iter() {
+            self.fs_entries.push(filesystem::FsEntry::new(
+                filesystem::FsEntry::create_inode(),
+                fuse::FileType::Directory,
+                &data.device,
+                filesystem::Mode::ReadOnly,
+                &vec![
+                    filesystem::FsEntry::new(
+                        filesystem::FsEntry::create_inode(),
+                        fuse::FileType::RegularFile,
+                        ENTRY_VALUE,
+                        filesystem::Mode::ReadOnly, //TODO: read-write
+                        &Vec::new()),
 
-        executor::block_on(self.fetch_brightness_values(&data))?;
+                    filesystem::FsEntry::new(
+                        filesystem::FsEntry::create_inode(),
+                        fuse::FileType::RegularFile,
+                        ENTRY_CURRENT_VALUE,
+                        filesystem::Mode::ReadOnly, //TODO: read-write
+                        &Vec::new()),
+                ]));
 
-        let status = executor::block_on(async {
-            println!("!!!!!!!!!!!!!!!! {:?}", data.lock().await);
-            let data = &data.lock().await.to_vec();
+            // Creation triggers
+            triggers::find_all_and_execute(
+                &self.triggers,
+                triggers::Kind::Create,
+                MODULE_NAME,
+                &data.device);
+        }
 
-            return self.update_brightness_values(data);
-        })?;
-
-        return Ok(status);
+        return Ok(module::Status::Changed(MODULE_NAME.to_string()));
     }
 }
 
 /// Brightness module structure
-pub struct BrightnessModule {
+pub struct Brightness {
     thread: Arc<Mutex<module::Thread>>,
-    //inode_plugged: u64,
+    //inode_count: u64,
+    //inode_empty: u64,
     backend: Arc<Mutex<BrightnessBackend>>,
+    backend_proxy: Arc<Mutex<BrightnessBackendProxy>>,
 }
 
-impl BrightnessModule {
+impl Brightness {
     /// Brightness constructor
     pub fn new(
         event_manager: &mut event_manager::EventManager,
         triggers: &Vec<triggers::Trigger>) -> Self {
 
-        //let plugged = filesystem::FsEntry::create_inode();
+        //let count = filesystem::FsEntry::create_inode();
+        //let empty = filesystem::FsEntry::create_inode();
+        let backend = Arc::new(Mutex::new(BrightnessBackend::new(triggers)));
 
         Self {
             thread: Arc::new(Mutex::new(
                 module::Thread::new(event_manager.sender()))),
 
-            //inode_plugged: plugged,
-            backend: Arc::new(Mutex::new(BrightnessBackend::new(triggers))),
+            //inode_count: count,
+            //inode_empty: empty,
+            backend: backend.clone(),
+            backend_proxy:
+                Arc::new(
+                    Mutex::new(
+                        BrightnessBackendProxy::new(backend.clone()))),
+            //fs_entries: vec![
+                //filesystem::FsEntry::new(
+                    //count,
+                    //fuse::FileType::RegularFile,
+                    //ENTRY_COUNT,
+                    //filesystem::Mode::ReadOnly,
+                    //&Vec::new()),
+
+                //filesystem::FsEntry::new(
+                    //empty,
+                    //fuse::FileType::RegularFile,
+                    //ENTRY_EMPTY,
+                    //filesystem::Mode::WriteOnly,
+                    //&Vec::new())
+                //],
         }
     }
 }
 
-impl module::Module for BrightnessModule {
+impl module::Module for Brightness {
     /// Get name of the module
     ///
     /// # Arguments
@@ -222,7 +297,7 @@ impl module::Module for BrightnessModule {
             Err(_) => return error!("Cannot lock thread"),
         };
 
-        thread.start(self.backend.clone(), config.timeout_s)?;
+        thread.start(self.backend_proxy.clone(), config.timeout_s)?;
 
         return Success!();
     }
@@ -278,22 +353,37 @@ impl module::Module for BrightnessModule {
     /// * `self` - The instance handle
     /// * `inode` - The inode of the filesystem to be fetched
     fn value(&self, inode: u64) -> String {
+        // Find filesystem entry
         let backend = match self.backend.lock() {
             Ok(b) => b,
             Err(_) => return VALUE_UNKNOWN.to_string(),
         };
 
-        // Search device that matched the inode
-        let device_name =
-            match backend.fs_entries.iter().find(|x| x.inode == inode) {
-                Some(e) => e.name.clone(),
+        for device_entry in backend.fs_entries.iter() {
+            let entry = match device_entry.fs_entries
+                .iter().find(|x| x.inode == inode) {
+
+                Some(e) => e,
+                None => continue,
+            };
+
+            // Find corresponding data
+            let data =
+                match backend.data
+                .iter().find(|x| x.device == device_entry.name) {
+
+                Some(d) => d,
                 None => return VALUE_UNKNOWN.to_string(),
             };
 
-        return match backend.data.iter().find(|x| x.device == device_name) {
-            Some(e) => e.value.clone(),
-            None => VALUE_UNKNOWN.to_string(),
+            return match entry.name.as_str() {
+                ENTRY_VALUE => data.value.clone(),
+                ENTRY_CURRENT_VALUE => data.current_value.clone(),
+                _ => VALUE_UNKNOWN.to_string(),
+            }
         }
+
+        return VALUE_UNKNOWN.to_string();
     }
 
     /// Set value of a filesystem entry
@@ -303,8 +393,49 @@ impl module::Module for BrightnessModule {
     /// * `self` - The instance handle
     /// * `inode` - The inode of the filesystem to be written
     /// * `data` - The data to be written
-    fn set_value(&mut self, _inode: u64, _data: &[u8]) {
-        //TODO
+    fn set_value(&mut self, inode: u64, data: &[u8]) {
+        //if inode == self.inode_empty {
+            //match data {
+                //b"1" | b"1\n" | b"true" | b"true\n" => {
+                    //let _backend = match self.backend.lock() {
+                        //Ok(b) => b,
+                        //Err(_) => {
+                            //println!("Cannot lock backend");
+                            //return;
+                        //},
+                    //};
+
+                    //let home_dir = match dirs::home_dir() {
+                        //Some(path) => path,
+                        //None => {
+                            //println!("Cannot get home directory");
+                            //return;
+                        //},
+                    //};
+
+                    //let trash_dir = home_dir
+                        //.join(".local")
+                        //.join("share")
+                        //.join("Trash");
+
+                    //let dir = trash_dir.join("files");
+
+                    //match Trash::remove_dir_contents(&dir) {
+                        //Ok(_) => (),
+                        //Err(_) => println!("Cannot empty directory: {:?}", dir),
+                    //}
+
+                    //let dir = trash_dir.join("info");
+
+                    //match Trash::remove_dir_contents(&dir) {
+                        //Ok(_) => (),
+                        //Err(_) => println!("Cannot empty directory: {:?}", dir),
+                    //}
+                //},
+
+                //_ => (),
+            //}
+        //}
     }
 
     /// Get value to be displayed for a filesystem entry (in JSON format)
@@ -330,21 +461,12 @@ impl module::Module for BrightnessModule {
     ///
     /// * `self` - The instance handle
     fn shell(&self) -> String {
-        let backend = match self.backend.lock() {
-            Ok(b) => b,
-            Err(_) => return VALUE_UNKNOWN.to_string(),
-        };
+        return VALUE_UNKNOWN.to_string();
+        //let backend = match self.backend.lock() {
+            //Ok(b) => b,
+            //Err(_) => return VALUE_UNKNOWN.to_string(),
+        //};
 
-        let mut output = "".to_string();
-
-        for (index, data) in backend.data.iter().enumerate() {
-            output += &format!("device_{}_name={} device_{}_brightness={}",
-                index,
-                data.device,
-                index,
-                data.value);
-        }
-
-        return output;
+        //return format!("count={}", backend.data.count).to_string();
     }
 }

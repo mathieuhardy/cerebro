@@ -21,7 +21,7 @@ use std::sync::Mutex;
 
 use modules::cpu;
 use modules::battery;
-//use modules::brightness;
+use modules::brightness;
 use modules::Module;
 use modules::trash;
 
@@ -139,9 +139,9 @@ fn main() {
         &mut event_manager,
         &triggers))));
 
-    //modules.push(Arc::new(Mutex::new(brightness::BrightnessModule::new(
-        //&mut event_manager,
-        //&triggers))));
+    modules.push(Arc::new(Mutex::new(brightness::Brightness::new(
+        &mut event_manager,
+        &triggers))));
 
     modules.push(Arc::new(Mutex::new(trash::Trash::new(
         &mut event_manager,

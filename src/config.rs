@@ -6,6 +6,13 @@ use std::path::Path;
 
 use crate::error;
 
+/// The structure used to store shell part of the configuration
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TemperatureConfig {
+    pub device: Option<String>,
+    pub pattern: Option<String>,
+}
+
 /// The structure used to store JSON part of the configuration
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct JsonConfig {
@@ -23,8 +30,21 @@ pub struct ShellConfig {
 pub struct ModuleConfig {
     pub enabled: Option<bool>,
     pub timeout_s: Option<u64>,
+    pub temperature: Option<TemperatureConfig>,
     pub json: Option<JsonConfig>,
     pub shell: Option<ShellConfig>,
+}
+
+impl ModuleConfig {
+    pub fn new() -> Self {
+        Self {
+            enabled: None,
+            timeout_s: None,
+            temperature: None,
+            json: None,
+            shell: None,
+        }
+    }
 }
 
 /// The structure used to store configuration of modules

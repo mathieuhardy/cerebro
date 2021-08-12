@@ -79,6 +79,7 @@ impl CpuListData {
 
 /// CPU backend that will compute the values
 struct CpuBackend {
+    config: config::ModuleConfig,
     system_stats: systemstat::System,
     cpu_stats: Option<DelayedMeasurement<Vec<CPULoad>>>,
     triggers: Vec<triggers::Trigger>,
@@ -100,6 +101,7 @@ impl CpuBackend {
         let physical_count = filesystem::FsEntry::create_inode();
 
         Self {
+            config: config::ModuleConfig::new(),
             system_stats: systemstat::System::new(),
             cpu_stats: None,
             triggers: triggers.to_vec(),
@@ -166,8 +168,32 @@ impl CpuBackend {
 
         log::info!("Update physical CPU data");
 
+        let temperature_config = match &self.config.temperature {
+            Some(c) => c,
+            None => return error!("Missing temperature configuration"),
+        };
+
+        let device = match &temperature_config.device {
+            Some(d) => d,
+            None => return error!("Missing device configuration"),
+        };
+
+        let pattern = match &temperature_config.pattern {
+            Some(p) => p,
+            None => return error!("Missing pattern configuration"),
+        };
+
+        let re_pattern = match Regex::new(pattern) {
+            Ok(r) => r,
+            Err(_) => return error!("Cannot build regex"),
+        };
+
         for chip in Sensors::new() {
             log::debug!("sensor_chip={:#?}", chip);
+
+            if chip.prefix() != device {
+                continue;
+            }
 
             // Search for a temperature feature
             for feature in chip {
@@ -184,7 +210,9 @@ impl CpuBackend {
                     Err(_) => continue,
                 };
 
-                if ! re_core.is_match(&label) {
+                log::debug!("feature_label={:#?}", label);
+
+                if ! re_pattern.is_match(feature.name()) {
                     continue;
                 }
 
@@ -482,6 +510,13 @@ impl module::Module for Cpu {
     ///
     /// * `self` - The instance handle
     fn start(&mut self, config: &config::ModuleConfig) -> error::CerebroResult {
+        let mut backend = match self.backend.lock() {
+            Ok(b) => b,
+            Err(_) => return error!("Cannot lock backend"),
+        };
+
+        backend.config = config.clone();
+
         let mut thread = match self.thread.lock() {
             Ok(t) => t,
             Err(_) => return error!("Cannot lock thread"),

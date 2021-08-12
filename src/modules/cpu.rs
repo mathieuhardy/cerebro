@@ -156,17 +156,10 @@ impl CpuBackend {
     fn update_physical(&mut self)
         -> Result<module::Status, error::CerebroError> {
 
-        let mut status = module::Status::Ok;
-
-        // Get CPU temperatures
-        let mut core_temperatures: Vec<u8> = Vec::new();
-
-        let re_core = match Regex::new(r"^Core [0-9]+$") {
-            Ok(r) => r,
-            Err(_) => return error!("Cannot build regex"),
-        };
-
         log::info!("Update physical CPU data");
+
+        let mut status = module::Status::Ok;
+        let mut core_temperatures: Vec<u8> = Vec::new();
 
         let temperature_config = match &self.config.temperature {
             Some(c) => c,
@@ -188,6 +181,7 @@ impl CpuBackend {
             Err(_) => return error!("Cannot build regex"),
         };
 
+        // Get CPU temperatures
         for chip in Sensors::new() {
             log::debug!("sensor_chip={:#?}", chip);
 

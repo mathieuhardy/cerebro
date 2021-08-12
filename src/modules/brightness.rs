@@ -2,11 +2,9 @@ use fuse;
 use notify::Watcher;
 use serde::{Serialize};
 use std::fs;
-use std::io;
 use std::path;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
-use walkdir;
 
 use crate::config;
 use crate::error;
@@ -230,8 +228,6 @@ impl BrightnessBackend {
 /// Brightness module structure
 pub struct Brightness {
     thread: Arc<Mutex<module::Thread>>,
-    //inode_count: u64,
-    //inode_empty: u64,
     backend: Arc<Mutex<BrightnessBackend>>,
     backend_proxy: Arc<Mutex<BrightnessBackendProxy>>,
 }
@@ -242,36 +238,17 @@ impl Brightness {
         event_manager: &mut event_manager::EventManager,
         triggers: &Vec<triggers::Trigger>) -> Self {
 
-        //let count = filesystem::FsEntry::create_inode();
-        //let empty = filesystem::FsEntry::create_inode();
         let backend = Arc::new(Mutex::new(BrightnessBackend::new(triggers)));
 
         Self {
             thread: Arc::new(Mutex::new(
                 module::Thread::new(event_manager.sender()))),
 
-            //inode_count: count,
-            //inode_empty: empty,
             backend: backend.clone(),
             backend_proxy:
                 Arc::new(
                     Mutex::new(
                         BrightnessBackendProxy::new(backend.clone()))),
-            //fs_entries: vec![
-                //filesystem::FsEntry::new(
-                    //count,
-                    //fuse::FileType::RegularFile,
-                    //ENTRY_COUNT,
-                    //filesystem::Mode::ReadOnly,
-                    //&Vec::new()),
-
-                //filesystem::FsEntry::new(
-                    //empty,
-                    //fuse::FileType::RegularFile,
-                    //ENTRY_EMPTY,
-                    //filesystem::Mode::WriteOnly,
-                    //&Vec::new())
-                //],
         }
     }
 }
@@ -393,49 +370,8 @@ impl module::Module for Brightness {
     /// * `self` - The instance handle
     /// * `inode` - The inode of the filesystem to be written
     /// * `data` - The data to be written
-    fn set_value(&mut self, inode: u64, data: &[u8]) {
-        //if inode == self.inode_empty {
-            //match data {
-                //b"1" | b"1\n" | b"true" | b"true\n" => {
-                    //let _backend = match self.backend.lock() {
-                        //Ok(b) => b,
-                        //Err(_) => {
-                            //println!("Cannot lock backend");
-                            //return;
-                        //},
-                    //};
-
-                    //let home_dir = match dirs::home_dir() {
-                        //Some(path) => path,
-                        //None => {
-                            //println!("Cannot get home directory");
-                            //return;
-                        //},
-                    //};
-
-                    //let trash_dir = home_dir
-                        //.join(".local")
-                        //.join("share")
-                        //.join("Trash");
-
-                    //let dir = trash_dir.join("files");
-
-                    //match Trash::remove_dir_contents(&dir) {
-                        //Ok(_) => (),
-                        //Err(_) => println!("Cannot empty directory: {:?}", dir),
-                    //}
-
-                    //let dir = trash_dir.join("info");
-
-                    //match Trash::remove_dir_contents(&dir) {
-                        //Ok(_) => (),
-                        //Err(_) => println!("Cannot empty directory: {:?}", dir),
-                    //}
-                //},
-
-                //_ => (),
-            //}
-        //}
+    fn set_value(&mut self, _inode: u64, _data: &[u8]) {
+        //TODO
     }
 
     /// Get value to be displayed for a filesystem entry (in JSON format)
@@ -461,12 +397,22 @@ impl module::Module for Brightness {
     ///
     /// * `self` - The instance handle
     fn shell(&self) -> String {
-        return VALUE_UNKNOWN.to_string();
-        //let backend = match self.backend.lock() {
-            //Ok(b) => b,
-            //Err(_) => return VALUE_UNKNOWN.to_string(),
-        //};
+        let backend = match self.backend.lock() {
+            Ok(b) => b,
+            Err(_) => return VALUE_UNKNOWN.to_string(),
+        };
 
-        //return format!("count={}", backend.data.count).to_string();
+        let mut output = "".to_string();
+
+        for data in backend.data.iter() {
+            output += &format!(
+                "{}_brightness={} {}_actual_brightness={}",
+                data.device,
+                data.value,
+                data.device,
+                data.current_value);
+        }
+
+        return output;
     }
 }

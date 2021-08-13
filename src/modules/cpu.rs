@@ -183,7 +183,8 @@ impl CpuBackend {
 
         // Get CPU temperatures
         for chip in Sensors::new() {
-            log::debug!("sensor_chip={:#?}", chip);
+            //TODO: remove
+            //log::debug!("sensor_chip={:#?}", chip);
 
             if chip.prefix() != device {
                 continue;
@@ -191,20 +192,23 @@ impl CpuBackend {
 
             // Search for a temperature feature
             for feature in chip {
-                log::debug!("feature={:#?}", feature);
+                //TODO: remove
+                //log::debug!("feature={:#?}", feature);
 
                 match feature.feature_type() {
                     FeatureType::SENSORS_FEATURE_TEMP => (),
                     _ => continue,
                 }
 
-                // Check if label contains `Core`
-                let label = match feature.get_label() {
-                    Ok(l) => l,
-                    Err(_) => continue,
-                };
+                //TODO: remove
+                // Check if label contains our pattern
+                //let label = match feature.get_label() {
+                    //Ok(l) => l,
+                    //Err(_) => continue,
+                //};
 
-                log::debug!("feature_label={:#?}", label);
+                //TODO: remove
+                //log::debug!("feature_label={:#?}", label);
 
                 if ! re_pattern.is_match(feature.name()) {
                     continue;
@@ -212,7 +216,8 @@ impl CpuBackend {
 
                 // Search for a temperature subfeature
                 for subfeature in feature {
-                    log::debug!("subfeature={:#?}", subfeature);
+                    //TODO: remove
+                    //log::debug!("subfeature={:#?}", subfeature);
 
                     match subfeature.subfeature_type() {
                         SubfeatureType::SENSORS_SUBFEATURE_TEMP_INPUT => (),
@@ -220,11 +225,16 @@ impl CpuBackend {
                     }
 
                     let value = match subfeature.get_value() {
-                        Ok(v) => v,
+                        Ok(v) => v as u8,
                         Err(_) => continue,
                     };
 
-                    core_temperatures.push(value as u8);
+                    if value == 0 {
+                        // Not a valid temperature
+                        continue;
+                    }
+
+                    core_temperatures.push(value);
                     break;
                 }
             }

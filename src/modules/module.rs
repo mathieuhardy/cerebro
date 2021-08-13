@@ -109,6 +109,8 @@ impl Thread {
             // stopped)
             match status {
                 Status::Changed(name) => {
+                    log::info!("module `{}` has changed", name);
+
                     let sender = match sender.lock() {
                         Ok(s) => s,
                         Err(_) => {

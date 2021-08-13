@@ -202,14 +202,14 @@ impl BrightnessBackend {
                         filesystem::FsEntry::create_inode(),
                         fuse::FileType::RegularFile,
                         ENTRY_VALUE,
-                        filesystem::Mode::ReadOnly, //TODO: read-write
+                        filesystem::Mode::ReadWrite,
                         &Vec::new()),
 
                     filesystem::FsEntry::new(
                         filesystem::FsEntry::create_inode(),
                         fuse::FileType::RegularFile,
                         ENTRY_CURRENT_VALUE,
-                        filesystem::Mode::ReadOnly, //TODO: read-write
+                        filesystem::Mode::ReadOnly,
                         &Vec::new()),
                 ]));
 

@@ -85,7 +85,7 @@ fn main() {
 
         None => {
             env_logger::Builder::new()
-                .filter(None, log::LevelFilter::Trace)
+                .filter(None, log::LevelFilter::Debug)
                 .format_timestamp(None)
                 .format_module_path(false)
                 .init();

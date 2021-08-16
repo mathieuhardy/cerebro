@@ -19,6 +19,7 @@ const VALUE_UNKNOWN: &str = "?";
 
 const ENTRY_VALUE: &str = "value";
 const ENTRY_CURRENT_VALUE: &str = "current_value";
+const ENTRY_MAX_VALUE: &str = "max_value";
 
 /// Information about the brightness
 #[derive(Serialize)]
@@ -27,6 +28,7 @@ struct BrightnessData
     pub device: String,
     pub value: String,
     pub current_value: String,
+    pub max_value: String,
 }
 
 /// Proxy backend that is only use in the context of the thread
@@ -178,7 +180,19 @@ impl BrightnessBackend {
             let current_value = match fs::read_to_string(&current_value_path) {
                 Ok(v) => v.replace("\n", ""),
                 Err(_) => {
-                    println!("Cannot read content of: {:?}", value_path);
+                    println!(
+                        "Cannot read content of: {:?}",
+                        current_value_path);
+
+                    continue;
+                },
+            };
+
+            let max_value_path = root.join(&name).join("max_brightness");
+            let max_value = match fs::read_to_string(&max_value_path) {
+                Ok(v) => v.replace("\n", ""),
+                Err(_) => {
+                    println!("Cannot read content of: {:?}", max_value_path);
                     continue;
                 },
             };
@@ -187,6 +201,7 @@ impl BrightnessBackend {
                 device: name,
                 value: value,
                 current_value: current_value,
+                max_value: max_value,
             });
         }
 
@@ -209,6 +224,13 @@ impl BrightnessBackend {
                         filesystem::FsEntry::create_inode(),
                         fuse::FileType::RegularFile,
                         ENTRY_CURRENT_VALUE,
+                        filesystem::Mode::ReadOnly,
+                        &Vec::new()),
+
+                    filesystem::FsEntry::new(
+                        filesystem::FsEntry::create_inode(),
+                        fuse::FileType::RegularFile,
+                        ENTRY_MAX_VALUE,
                         filesystem::Mode::ReadOnly,
                         &Vec::new()),
                 ]));
@@ -356,6 +378,7 @@ impl module::Module for Brightness {
             return match entry.name.as_str() {
                 ENTRY_VALUE => data.value.clone(),
                 ENTRY_CURRENT_VALUE => data.current_value.clone(),
+                ENTRY_MAX_VALUE => data.max_value.clone(),
                 _ => VALUE_UNKNOWN.to_string(),
             }
         }
@@ -406,11 +429,13 @@ impl module::Module for Brightness {
 
         for data in backend.data.iter() {
             output += &format!(
-                "{}_brightness={} {}_actual_brightness={}",
+                "{}_brightness={} {}_actual_brightness={} {}_max_brightness={}",
                 data.device,
                 data.value,
                 data.device,
-                data.current_value);
+                data.current_value,
+                data.device,
+                data.max_value);
         }
 
         return output;

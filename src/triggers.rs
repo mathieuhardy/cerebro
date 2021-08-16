@@ -151,7 +151,7 @@ pub fn load<P: AsRef<Path>>(path: P)
         Err(_) => return Ok(triggers),
     };
 
-    let re_file = match Regex::new(r"^.*\.trigger$") {
+    let re_file = match Regex::new(r"^.*\.triggers$") {
         Ok(r) => r,
         Err(_) => return error!("Cannot build regex"),
     };

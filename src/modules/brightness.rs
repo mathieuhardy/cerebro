@@ -95,8 +95,6 @@ impl module::Data for BrightnessBackendProxy {
                 Ok(_) => (),
                 Err(_) => return error!("Cannot add path to watch"),
             }
-
-            println!("+++ watch {:?}", path);
         }
 
         loop {
@@ -105,19 +103,68 @@ impl module::Data for BrightnessBackendProxy {
                 Err(_) => return error!("Error during watching filesystem"),
             };
 
-            println!("!!!! {:#?}", event);
+            // Wait for close-write event
+            let op = match event.op {
+                Ok(o) => o,
+                Err(_) => return error!("Watch event returned an error"),
+            };
 
-            //let op = match event.op {
-                //Ok(o) => o,
-                //Err(_) => return error!("Watch event returned an error"),
-            //};
+            match op {
+                notify::Op::CLOSE_WRITE => (),
+                _ => continue,
+            }
 
-            //match op {
-                //notify::Op::CREATE | notify::Op::CLOSE_WRITE => (),
-                //_ => continue,
-            //}
+            // Get path
+            let path = match event.path {
+                Some(p) => p,
+                None => return error!("No path provided for event"),
+            };
 
-            //self.update_count()?;
+            let path = match path.to_str() {
+                Some(p) => p,
+                None => return error!("Cannot convert path to string"),
+            };
+
+            let mut backend = match self.backend.lock() {
+                Ok(b) => b,
+                Err(_) => return error!("Cannot lock backend"),
+            };
+
+            let mut device: String = "".to_string();
+
+            for data in backend.data.iter_mut() {
+                match path.find(&data.device) {
+                    Some(_) => (),
+                    None => continue,
+                }
+
+                device = data.device.clone();
+
+                // Read value from file
+                let value = match fs::read_to_string(&path) {
+                    Ok(v) => v.replace("\n", ""),
+                    Err(_) => return error!("Cannot read brightness value"),
+                };
+
+                // Update field
+                data.value = value;
+
+                println!(
+                    "New brightness value for {}: {}",
+                    data.device,
+                    data.value);
+
+                break;
+            }
+
+            // Call update triggers
+            if ! device.is_empty() {
+                triggers::find_all_and_execute(
+                    &backend.triggers,
+                    triggers::Kind::Update,
+                    MODULE_NAME,
+                    &format!("{}/{}", device, ENTRY_VALUE));
+            }
         }
     }
 }
@@ -240,7 +287,19 @@ impl BrightnessBackend {
                 &self.triggers,
                 triggers::Kind::Create,
                 MODULE_NAME,
-                &data.device);
+                &format!("{}/{}", data.device, ENTRY_VALUE));
+
+            triggers::find_all_and_execute(
+                &self.triggers,
+                triggers::Kind::Create,
+                MODULE_NAME,
+                &format!("{}/{}", data.device, ENTRY_CURRENT_VALUE));
+
+            triggers::find_all_and_execute(
+                &self.triggers,
+                triggers::Kind::Create,
+                MODULE_NAME,
+                &format!("{}/{}", data.device, ENTRY_MAX_VALUE));
         }
 
         return Ok(module::Status::Changed(MODULE_NAME.to_string()));

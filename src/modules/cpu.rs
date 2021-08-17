@@ -3,6 +3,7 @@ use regex::Regex;
 use sensors::{FeatureType, Sensors, SubfeatureType};
 use serde::{Serialize};
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 use systemstat::{CPULoad, DelayedMeasurement, Platform};
 
 use crate::config;
@@ -18,6 +19,7 @@ const ENTRY_COUNT: &str = "count";
 const ENTRY_LOGICAL: &str = "logical";
 const ENTRY_PHYSICAL: &str = "physical";
 const ENTRY_TEMPERATURE: &str = "temperature";
+const ENTRY_TIMESTAMP: &str = "timestamp";
 const ENTRY_USAGE: &str = "usage_percent";
 
 const VALUE_UNKNOWN: &str = "?";
@@ -58,9 +60,11 @@ impl PhysicalData {
 /// Information about the list of CPU
 #[derive(Serialize)]
 struct CpuListData {
+    pub logical_timestamp: String,
     pub logical_count: String,
     pub logical_list: Vec<LogicalData>,
 
+    pub physical_timestamp: String,
     pub physical_count: String,
     pub physical_list: Vec<PhysicalData>,
 }
@@ -69,8 +73,10 @@ impl CpuListData {
     /// CpuListData constructor
     pub fn new() -> Self {
         Self {
+            logical_timestamp: "0".to_string(),
             logical_count: "0".to_string(),
             logical_list: Vec::new(),
+            physical_timestamp: "0".to_string(),
             physical_count: "0".to_string(),
             physical_list: Vec::new(),
         }
@@ -84,6 +90,8 @@ struct CpuBackend {
     cpu_stats: Option<DelayedMeasurement<Vec<CPULoad>>>,
     triggers: Vec<triggers::Trigger>,
 
+    pub inode_logical_timestamp: u64,
+    pub inode_physical_timestamp: u64,
     pub inode_logical_count: u64,
     pub inode_physical_count: u64,
     pub data: CpuListData,
@@ -97,14 +105,18 @@ impl CpuBackend {
     fn new(triggers: &Vec<triggers::Trigger>) -> Self {
         let logical = filesystem::FsEntry::create_inode();
         let logical_count = filesystem::FsEntry::create_inode();
+        let logical_timestamp = filesystem::FsEntry::create_inode();
         let physical = filesystem::FsEntry::create_inode();
         let physical_count = filesystem::FsEntry::create_inode();
+        let physical_timestamp = filesystem::FsEntry::create_inode();
 
         Self {
             config: config::ModuleConfig::new(),
             system_stats: systemstat::System::new(),
             cpu_stats: None,
             triggers: triggers.to_vec(),
+            inode_logical_timestamp: logical_timestamp,
+            inode_physical_timestamp: physical_timestamp,
             inode_logical_count: logical_count,
             inode_physical_count: physical_count,
             data: CpuListData::new(),
@@ -116,11 +128,18 @@ impl CpuBackend {
                     filesystem::Mode::ReadOnly,
                     &vec![
                         filesystem::FsEntry::new(
-                        logical_count,
-                        fuse::FileType::RegularFile,
-                        ENTRY_COUNT,
-                        filesystem::Mode::ReadOnly,
-                        &Vec::new())
+                            logical_count,
+                            fuse::FileType::RegularFile,
+                            ENTRY_COUNT,
+                            filesystem::Mode::ReadOnly,
+                            &Vec::new()),
+
+                        filesystem::FsEntry::new(
+                            logical_timestamp,
+                            fuse::FileType::RegularFile,
+                            ENTRY_TIMESTAMP,
+                            filesystem::Mode::ReadOnly,
+                            &Vec::new())
                     ]),
 
                 filesystem::FsEntry::new(
@@ -130,11 +149,18 @@ impl CpuBackend {
                     filesystem::Mode::ReadOnly,
                     &vec![
                         filesystem::FsEntry::new(
-                        physical_count,
-                        fuse::FileType::RegularFile,
-                        ENTRY_COUNT,
-                        filesystem::Mode::ReadOnly,
-                        &Vec::new())
+                            physical_count,
+                            fuse::FileType::RegularFile,
+                            ENTRY_COUNT,
+                            filesystem::Mode::ReadOnly,
+                            &Vec::new()),
+
+                        filesystem::FsEntry::new(
+                            physical_timestamp,
+                            fuse::FileType::RegularFile,
+                            ENTRY_TIMESTAMP,
+                            filesystem::Mode::ReadOnly,
+                            &Vec::new())
                     ]),
                 ],
             logical_fs_entries: Vec::new(),
@@ -183,32 +209,16 @@ impl CpuBackend {
 
         // Get CPU temperatures
         for chip in Sensors::new() {
-            //TODO: remove
-            //log::debug!("sensor_chip={:#?}", chip);
-
             if chip.prefix() != device {
                 continue;
             }
 
             // Search for a temperature feature
             for feature in chip {
-                //TODO: remove
-                //log::debug!("feature={:#?}", feature);
-
                 match feature.feature_type() {
                     FeatureType::SENSORS_FEATURE_TEMP => (),
                     _ => continue,
                 }
-
-                //TODO: remove
-                // Check if label contains our pattern
-                //let label = match feature.get_label() {
-                    //Ok(l) => l,
-                    //Err(_) => continue,
-                //};
-
-                //TODO: remove
-                //log::debug!("feature_label={:#?}", label);
 
                 if ! re_pattern.is_match(feature.name()) {
                     continue;
@@ -216,9 +226,6 @@ impl CpuBackend {
 
                 // Search for a temperature subfeature
                 for subfeature in feature {
-                    //TODO: remove
-                    //log::debug!("subfeature={:#?}", subfeature);
-
                     match subfeature.subfeature_type() {
                         SubfeatureType::SENSORS_SUBFEATURE_TEMP_INPUT => (),
                         _ => continue,
@@ -288,7 +295,27 @@ impl CpuBackend {
             _ => (),
         }
 
+        self.update_physical_timestamp()?;
+
         return Ok(status);
+    }
+
+    /// Update physical timestamp
+    fn update_physical_timestamp(&mut self) -> error::CerebroResult {
+
+        match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(d) => self.data.physical_timestamp = format!("{}", d.as_secs()),
+            Err(_) => return error!("Cannot get time since UNIX_EPOCH"),
+        }
+
+        // Call triggers if needed
+        triggers::find_all_and_execute(
+            &self.triggers,
+            triggers::Kind::Update,
+            MODULE_NAME,
+            &format!("{}/{}", ENTRY_PHYSICAL, ENTRY_TIMESTAMP));
+
+        return Success!();
     }
 
     /// Update logical CPU data and filesystem
@@ -324,10 +351,30 @@ impl CpuBackend {
             _ => self.update_logical_data(&cpu)?,
         }
 
+        self.update_logical_timestamp()?;
+
         // Restart a monitoring
         self.start_monitoring()?;
 
         return Ok(status);
+    }
+
+    /// Update logical timestamp
+    fn update_logical_timestamp(&mut self) -> error::CerebroResult {
+
+        match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(d) => self.data.logical_timestamp = format!("{}", d.as_secs()),
+            Err(_) => return error!("Cannot get time since UNIX_EPOCH"),
+        }
+
+        // Call triggers if needed
+        triggers::find_all_and_execute(
+            &self.triggers,
+            triggers::Kind::Update,
+            MODULE_NAME,
+            &format!("{}/{}", ENTRY_LOGICAL, ENTRY_TIMESTAMP));
+
+        return Success!();
     }
 
     /// Update logical CPU count
@@ -591,8 +638,16 @@ impl module::Module for Cpu {
             Err(_) => return VALUE_UNKNOWN.to_string(),
         };
 
+        if inode == backend.inode_logical_timestamp {
+            return backend.data.logical_timestamp.clone();
+        }
+
         if inode == backend.inode_logical_count {
             return backend.data.logical_count.clone();
+        }
+
+        if inode == backend.inode_physical_timestamp {
+            return backend.data.physical_timestamp.clone();
         }
 
         if inode == backend.inode_physical_count {

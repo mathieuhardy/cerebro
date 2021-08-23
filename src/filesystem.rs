@@ -39,7 +39,7 @@ lazy_static! {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Mode {
     ReadOnly,
-    ReadWrite,
+    //ReadWrite,
     WriteOnly,
 }
 
@@ -96,7 +96,7 @@ impl FsEntry {
             FileType::RegularFile => match self.mode {
                 Mode::WriteOnly => 0o222,
                 Mode::ReadOnly => 0o444,
-                Mode::ReadWrite => 0o666,
+                //Mode::ReadWrite => 0o666,
             },
             _ => 0o555,
         };

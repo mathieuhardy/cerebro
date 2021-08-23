@@ -75,6 +75,8 @@ impl TrashBackendProxy {
         };
 
         if count != backend.data.count {
+            let old_value = backend.data.count.clone();
+
             backend.data.count = count;
 
             log::debug!("{}: count={}", MODULE_NAME, backend.data.count);
@@ -83,7 +85,9 @@ impl TrashBackendProxy {
                 &backend.triggers,
                 triggers::Kind::Update,
                 MODULE_NAME,
-                ENTRY_COUNT);
+                ENTRY_COUNT,
+                &old_value,
+                &backend.data.count);
         }
 
         return Success!();

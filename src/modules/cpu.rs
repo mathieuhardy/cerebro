@@ -253,13 +253,17 @@ impl CpuBackend {
         if self.data.physical_list.len() != cpu_count {
             status = module::Status::Changed(MODULE_NAME.to_string());
 
+            let old_value = self.data.physical_count.clone();
+
             self.data.physical_count = format!("{}", cpu_count);
 
             triggers::find_all_and_execute(
                 &self.triggers,
                 triggers::Kind::Update,
                 MODULE_NAME,
-                &format!("{}/{}", ENTRY_PHYSICAL, ENTRY_COUNT));
+                &format!("{}/{}", ENTRY_PHYSICAL, ENTRY_COUNT),
+                &old_value,
+                &self.data.physical_count);
         }
 
         // Rebuild CPU list
@@ -303,6 +307,8 @@ impl CpuBackend {
     /// Update physical timestamp
     fn update_physical_timestamp(&mut self) -> error::CerebroResult {
 
+        let old_value = self.data.physical_timestamp.clone();
+
         match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
             Ok(d) => self.data.physical_timestamp = format!("{}", d.as_secs()),
             Err(_) => return error!("Cannot get time since UNIX_EPOCH"),
@@ -313,7 +319,9 @@ impl CpuBackend {
             &self.triggers,
             triggers::Kind::Update,
             MODULE_NAME,
-            &format!("{}/{}", ENTRY_PHYSICAL, ENTRY_TIMESTAMP));
+            &format!("{}/{}", ENTRY_PHYSICAL, ENTRY_TIMESTAMP),
+            &old_value,
+            &self.data.physical_timestamp);
 
         return Success!();
     }
@@ -362,6 +370,8 @@ impl CpuBackend {
     /// Update logical timestamp
     fn update_logical_timestamp(&mut self) -> error::CerebroResult {
 
+        let old_value = self.data.logical_timestamp.clone();
+
         match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
             Ok(d) => self.data.logical_timestamp = format!("{}", d.as_secs()),
             Err(_) => return error!("Cannot get time since UNIX_EPOCH"),
@@ -372,7 +382,9 @@ impl CpuBackend {
             &self.triggers,
             triggers::Kind::Update,
             MODULE_NAME,
-            &format!("{}/{}", ENTRY_LOGICAL, ENTRY_TIMESTAMP));
+            &format!("{}/{}", ENTRY_LOGICAL, ENTRY_TIMESTAMP),
+            &old_value,
+            &self.data.logical_timestamp);
 
         return Success!();
     }
@@ -388,6 +400,8 @@ impl CpuBackend {
         }
 
         // Update data
+        let old_value = self.data.logical_count.clone();
+
         self.data.logical_count = format!("{}", cpu_count);
 
         log::debug!("Number of CPU: {}", cpu_count);
@@ -397,7 +411,9 @@ impl CpuBackend {
             &self.triggers,
             triggers::Kind::Update,
             MODULE_NAME,
-            &format!("{}/{}", ENTRY_LOGICAL, ENTRY_COUNT));
+            &format!("{}/{}", ENTRY_LOGICAL, ENTRY_COUNT),
+            &old_value,
+            &self.data.logical_count);
 
         return Ok(module::Status::Changed(MODULE_NAME.to_string()));
     }
@@ -412,7 +428,9 @@ impl CpuBackend {
                 &self.triggers,
                 triggers::Kind::Delete,
                 MODULE_NAME,
-                &format!("{}/{}/{}", ENTRY_LOGICAL, index, ENTRY_USAGE));
+                &format!("{}/{}/{}", ENTRY_LOGICAL, index, ENTRY_USAGE),
+                "",
+                "");
         }
 
         // Rebuild list
@@ -428,7 +446,9 @@ impl CpuBackend {
                 &self.triggers,
                 triggers::Kind::Create,
                 MODULE_NAME,
-                &format!("{}/{}/{}", ENTRY_LOGICAL, index, ENTRY_USAGE));
+                &format!("{}/{}/{}", ENTRY_LOGICAL, index, ENTRY_USAGE),
+                "",
+                "");
         }
 
         return Success!();
@@ -449,6 +469,8 @@ impl CpuBackend {
                 continue;
             }
 
+            let old_value = self.data.logical_list[index].usage_percent.clone();
+
             self.data.logical_list[index] = data;
 
             // Call update trigger
@@ -456,7 +478,9 @@ impl CpuBackend {
                 &self.triggers,
                 triggers::Kind::Update,
                 MODULE_NAME,
-                &format!("{}/{}/{}", ENTRY_LOGICAL, index, ENTRY_USAGE));
+                &format!("{}/{}/{}", ENTRY_LOGICAL, index, ENTRY_USAGE),
+                &old_value,
+                &self.data.logical_list[index].usage_percent);
         }
 
         return Success!();

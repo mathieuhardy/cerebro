@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::cmp::Ordering;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -15,17 +16,35 @@ pub enum Kind {
     Update,
 }
 
+/// Operator for comparison
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Operator {
+    None,
+    LowerThan,
+    GreaterThan,
+    Different,
+    Equal,
+}
+
 /// The structure used to store a trigger configuration
 #[derive(Clone, Debug)]
 pub struct Trigger {
     pub kind: Kind,
     pub path: String,
+    pub operator: Operator,
+    pub value_to_compare: String,
 
     command: String,
 }
 
 impl Trigger {
-    pub fn new(kind: &str, path: &str, command: &str) -> Self {
+    pub fn new(
+        kind: &str,
+        path: &str,
+        operator: &str,
+        value_to_compare: &str,
+        command: &str) -> Self {
+
         Self {
             kind: match kind {
                 "C" => Kind::Create,
@@ -34,6 +53,15 @@ impl Trigger {
                 _ => Kind::Invalid,
             },
             path: path.to_string(),
+            operator: match operator {
+                "*" => Operator::None,
+                "<" => Operator::LowerThan,
+                ">" => Operator::GreaterThan,
+                "!=" => Operator::Different,
+                "==" => Operator::Equal,
+                _ => Operator::None,
+            },
+            value_to_compare: value_to_compare.to_string(),
             command: command.to_string(),
         }
     }
@@ -103,7 +131,9 @@ fn load_file<P: AsRef<Path>>(path: P)
         Err(_) => return error!("Cannot open trigger file"),
     };
 
-    let re_line = Regex::new(r"^(C|D|U) ([^=]+)=(.*)").unwrap();
+    let re_line =
+        Regex::new(r"^(C|D|U) ([^ ]+) (\*|<|>|!=|==) (\*|[0-9a-zA-Z]+) (.*)")
+            .unwrap();
 
     for line in BufReader::new(file).lines() {
         let line = match line {
@@ -129,12 +159,23 @@ fn load_file<P: AsRef<Path>>(path: P)
             None => continue,
         };
 
-        let command = match captures.get(3) {
+        let operator = match captures.get(3) {
+            Some(o) => o.as_str(),
+            None => continue,
+        };
+
+        let value_to_compare = match captures.get(4) {
+            Some(v) => v.as_str(),
+            None => continue,
+        };
+
+        let command = match captures.get(5) {
             Some(c) => c.as_str(),
             None => continue,
         };
 
-        triggers.push(Trigger::new(kind, path, command));
+        triggers.push(
+            Trigger::new(kind, path, operator, value_to_compare, command));
     }
 
     return Ok(triggers);
@@ -187,13 +228,62 @@ pub fn find_all_and_execute<'a>(
     triggers: &'a Vec<Trigger>,
     kind: Kind,
     module: &str,
-    name: &str) {
+    name: &str,
+    old_value: &str,
+    new_value: &str) {
 
     for trigger in triggers.iter() {
+        // Check path
         if ! trigger.matches(kind, &format!("/{}/{}", module, name)) {
             continue;
         }
 
+        log::debug!(
+            "{} {:?} {} ?",
+            new_value,
+            trigger.operator,
+            trigger.value_to_compare);
+
+        // Check operator
+        if trigger.operator == Operator::Equal &&
+            new_value != trigger.value_to_compare {
+
+            continue;
+        }
+
+        if trigger.operator == Operator::Different &&
+            new_value == trigger.value_to_compare {
+
+            continue;
+        }
+
+        if trigger.operator == Operator::LowerThan {
+            match old_value.cmp(&trigger.value_to_compare) {
+                Ordering::Less => continue, // Old value was already under
+                _ => (),
+            }
+
+            match new_value.cmp(&trigger.value_to_compare) {
+                Ordering::Greater => continue,
+                Ordering::Equal => continue,
+                _ => (),
+            }
+        }
+
+        if trigger.operator == Operator::GreaterThan {
+            match old_value.cmp(&trigger.value_to_compare) {
+                Ordering::Greater => continue, // Old value was already above
+                _ => (),
+            }
+
+            match new_value.cmp(&trigger.value_to_compare) {
+                Ordering::Less => continue,
+                Ordering::Equal => continue,
+                _ => (),
+            }
+        }
+
+        // Execute trigger
         match trigger.execute() {
             Ok(_) => (),
             Err(e) => log::error!("{}", e),

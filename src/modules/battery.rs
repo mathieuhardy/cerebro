@@ -76,6 +76,8 @@ impl module::Data for BatteryBackend {
         };
 
         if plugged != self.data.plugged {
+            let old_value = self.data.plugged.clone();
+
             self.data.plugged = plugged;
 
             log::debug!("{}: plugged={}", MODULE_NAME, self.data.plugged);
@@ -84,7 +86,9 @@ impl module::Data for BatteryBackend {
                 &self.triggers,
                 triggers::Kind::Update,
                 MODULE_NAME,
-                ENTRY_PLUGGED);
+                ENTRY_PLUGGED,
+                &old_value,
+                &self.data.plugged);
         }
 
         // Percent and time remaining
@@ -103,6 +107,8 @@ impl module::Data for BatteryBackend {
         };
 
         if percent != self.data.percent {
+            let old_value = self.data.percent.clone();
+
             self.data.percent = percent;
 
             log::debug!("{}: percent={}", MODULE_NAME, self.data.percent);
@@ -111,10 +117,14 @@ impl module::Data for BatteryBackend {
                 &self.triggers,
                 triggers::Kind::Update,
                 MODULE_NAME,
-                ENTRY_PERCENT);
+                ENTRY_PERCENT,
+                &old_value,
+                &self.data.percent);
         }
 
         if time_remaining != self.data.time_remaining {
+            let old_value = self.data.time_remaining.clone();
+
             self.data.time_remaining = time_remaining;
 
             log::debug!(
@@ -126,7 +136,9 @@ impl module::Data for BatteryBackend {
                 &self.triggers,
                 triggers::Kind::Update,
                 MODULE_NAME,
-                ENTRY_TIME_REMAINING);
+                ENTRY_TIME_REMAINING,
+                &old_value,
+                &self.data.time_remaining);
         }
 
         return Ok(module::Status::Ok);

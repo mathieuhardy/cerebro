@@ -131,6 +131,8 @@ impl module::Data for BrightnessBackendProxy {
             };
 
             let mut device: String = "".to_string();
+            let mut old_value: String = "".to_string();
+            let mut new_value: String = "".to_string();
 
             for data in backend.data.iter_mut() {
                 match path.find(&data.device) {
@@ -147,7 +149,11 @@ impl module::Data for BrightnessBackendProxy {
                 };
 
                 // Update field
+                old_value = data.value.clone();
+
                 data.value = value;
+
+                new_value = data.value.clone();
 
                 println!(
                     "New brightness value for {}: {}",
@@ -163,7 +169,9 @@ impl module::Data for BrightnessBackendProxy {
                     &backend.triggers,
                     triggers::Kind::Update,
                     MODULE_NAME,
-                    &format!("{}/{}", device, ENTRY_VALUE));
+                    &format!("{}/{}", device, ENTRY_VALUE),
+                    &old_value,
+                    &new_value);
             }
         }
     }
@@ -287,19 +295,25 @@ impl BrightnessBackend {
                 &self.triggers,
                 triggers::Kind::Create,
                 MODULE_NAME,
-                &format!("{}/{}", data.device, ENTRY_VALUE));
+                &format!("{}/{}", data.device, ENTRY_VALUE),
+                "",
+                "");
 
             triggers::find_all_and_execute(
                 &self.triggers,
                 triggers::Kind::Create,
                 MODULE_NAME,
-                &format!("{}/{}", data.device, ENTRY_CURRENT_VALUE));
+                &format!("{}/{}", data.device, ENTRY_CURRENT_VALUE),
+                "",
+                "");
 
             triggers::find_all_and_execute(
                 &self.triggers,
                 triggers::Kind::Create,
                 MODULE_NAME,
-                &format!("{}/{}", data.device, ENTRY_MAX_VALUE));
+                &format!("{}/{}", data.device, ENTRY_MAX_VALUE),
+                "",
+                "");
         }
 
         return Ok(module::Status::Changed(MODULE_NAME.to_string()));

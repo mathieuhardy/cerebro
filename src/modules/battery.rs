@@ -44,6 +44,7 @@ impl BatteryData {
 struct BatteryBackend {
     system_stats: systemstat::System,
     triggers: Vec<triggers::Trigger>,
+    first_update: bool,
 
     pub data: BatteryData,
 }
@@ -53,6 +54,7 @@ impl BatteryBackend {
         Self {
             system_stats: systemstat::System::new(),
             triggers: triggers.to_vec(),
+            first_update: true,
             data: BatteryData::new(),
         }
     }
@@ -65,6 +67,11 @@ impl module::Data for BatteryBackend {
     ///
     /// * `self` - The instance handle
     fn update(&mut self) -> Result<module::Status, error::CerebroError> {
+        let kind = match self.first_update {
+            true => triggers::Kind::Create,
+            false => triggers::Kind::Update,
+        };
+
         // Plugged status
         let plugged = match self.system_stats.on_ac_power() {
             Ok(power) => match power {
@@ -84,7 +91,7 @@ impl module::Data for BatteryBackend {
 
             triggers::find_all_and_execute(
                 &self.triggers,
-                triggers::Kind::Update,
+                kind,
                 MODULE_NAME,
                 ENTRY_PLUGGED,
                 &old_value,
@@ -115,7 +122,7 @@ impl module::Data for BatteryBackend {
 
             triggers::find_all_and_execute(
                 &self.triggers,
-                triggers::Kind::Update,
+                kind,
                 MODULE_NAME,
                 ENTRY_PERCENT,
                 &old_value,
@@ -134,12 +141,14 @@ impl module::Data for BatteryBackend {
 
             triggers::find_all_and_execute(
                 &self.triggers,
-                triggers::Kind::Update,
+                kind,
                 MODULE_NAME,
                 ENTRY_TIME_REMAINING,
                 &old_value,
                 &self.data.time_remaining);
         }
+
+        self.first_update = false;
 
         return Ok(module::Status::Ok);
     }

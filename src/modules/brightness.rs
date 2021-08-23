@@ -264,7 +264,7 @@ impl BrightnessBackend {
                         filesystem::FsEntry::create_inode(),
                         fuse::FileType::RegularFile,
                         ENTRY_VALUE,
-                        filesystem::Mode::ReadWrite,
+                        filesystem::Mode::ReadOnly,
                         &Vec::new()),
 
                     filesystem::FsEntry::new(
@@ -453,7 +453,6 @@ impl module::Module for Brightness {
     /// * `inode` - The inode of the filesystem to be written
     /// * `data` - The data to be written
     fn set_value(&mut self, _inode: u64, _data: &[u8]) {
-        //TODO
     }
 
     /// Get value to be displayed for a filesystem entry (in JSON format)

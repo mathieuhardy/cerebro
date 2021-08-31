@@ -70,11 +70,15 @@ impl Trigger {
         log::debug!("{} >>> {}", self.path, self.command);
 
         for command in self.command.split(";") {
-            let mut binary = command.split(" ").collect::<Vec<&str>>();
+            let mut parsed_command = match shellwords::split(command) {
+                Ok(w) => w,
+                Err(e) =>
+                    return error!(&format!("Cannot split command: {:?}", e)),
+            };
 
-            let args = binary.split_off(1);
+            let args = parsed_command.split_off(1);
 
-            let output = match process::Command::new(binary[0])
+            let output = match process::Command::new(&parsed_command[0])
                 .args(args).output() {
 
                 Ok(o) => o,

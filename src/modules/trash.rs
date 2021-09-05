@@ -27,6 +27,7 @@ const ENTRY_EMPTY: &str = "empty";
 #[derive(Serialize)]
 struct TrashData
 {
+    pub first_update: bool,
     pub count: String,
 }
 
@@ -34,6 +35,7 @@ impl TrashData {
     /// TrashData constructor
     pub fn new() -> Self {
         Self {
+            first_update: true,
             count: VALUE_UNKNOWN.to_string(),
         }
     }
@@ -81,13 +83,18 @@ impl TrashBackendProxy {
 
             log::debug!("{}: count={}", MODULE_NAME, backend.data.count);
 
-            triggers::find_all_and_execute(
-                &backend.triggers,
-                triggers::Kind::Update,
-                MODULE_NAME,
-                ENTRY_COUNT,
-                &old_value,
-                &backend.data.count);
+            if ! first_update {
+                triggers::find_all_and_execute(
+                    &backend.triggers,
+                    triggers::Kind::Update,
+                    MODULE_NAME,
+                    ENTRY_COUNT,
+                    &old_value,
+                    &backend.data.count);
+            }
+            else {
+                first_update = false;
+            }
         }
 
         return Success!();

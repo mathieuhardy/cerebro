@@ -83,7 +83,7 @@ impl TrashBackendProxy {
 
             log::debug!("{}: count={}", MODULE_NAME, backend.data.count);
 
-            if ! first_update {
+            if ! backend.data.first_update {
                 triggers::find_all_and_execute(
                     &backend.triggers,
                     triggers::Kind::Update,
@@ -93,7 +93,7 @@ impl TrashBackendProxy {
                     &backend.data.count);
             }
             else {
-                first_update = false;
+                backend.data.first_update = false;
             }
         }
 

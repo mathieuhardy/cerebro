@@ -251,23 +251,36 @@ pub fn find_all_and_execute<'a>(
         // Check operator
         if trigger.operator == Operator::Equal &&
             new_value != trigger.value_to_compare {
-
             continue;
         }
 
         if trigger.operator == Operator::Different &&
             new_value == trigger.value_to_compare {
-
             continue;
         }
 
         if trigger.operator == Operator::LowerThan {
-            match old_value.cmp(&trigger.value_to_compare) {
+            let old_value_i64 = match old_value.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            let threshold_i64 = match trigger.value_to_compare.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            match old_value_i64.cmp(&threshold_i64) {
                 Ordering::Less => continue, // Old value was already under
                 _ => (),
             }
 
-            match new_value.cmp(&trigger.value_to_compare) {
+            let new_value_i64 = match new_value.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            match new_value_i64.cmp(&threshold_i64) {
                 Ordering::Greater => continue,
                 Ordering::Equal => continue,
                 _ => (),
@@ -275,12 +288,27 @@ pub fn find_all_and_execute<'a>(
         }
 
         if trigger.operator == Operator::GreaterThan {
-            match old_value.cmp(&trigger.value_to_compare) {
+            let old_value_i64 = match old_value.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            let threshold_i64 = match trigger.value_to_compare.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            match old_value_i64.cmp(&threshold_i64) {
                 Ordering::Greater => continue, // Old value was already above
                 _ => (),
             }
 
-            match new_value.cmp(&trigger.value_to_compare) {
+            let new_value_i64 = match new_value.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            match new_value_i64.cmp(&threshold_i64) {
                 Ordering::Less => continue,
                 Ordering::Equal => continue,
                 _ => (),

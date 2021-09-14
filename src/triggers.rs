@@ -66,7 +66,7 @@ impl Trigger {
         }
     }
 
-    pub fn execute(&self) -> error::CerebroResult {
+    pub fn execute(&self) -> error::Return {
         log::debug!("{} >>> {}", self.path, self.command);
 
         for command in self.command.split(";") {
@@ -91,7 +91,7 @@ impl Trigger {
             }
         }
 
-        return Success!();
+        return success!();
     }
 
     pub fn matches(&self, kind: Kind, path: &str) -> bool {

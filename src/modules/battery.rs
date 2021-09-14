@@ -223,7 +223,7 @@ impl module::Module for Battery {
     /// # Arguments
     ///
     /// * `self` - The instance handle
-    fn start(&mut self, config: &config::ModuleConfig) -> error::CerebroResult {
+    fn start(&mut self, config: &config::ModuleConfig) -> error::Return {
         let mut thread = match self.thread.lock() {
             Ok(t) => t,
             Err(_) => return error!("Cannot lock thread"),
@@ -231,7 +231,7 @@ impl module::Module for Battery {
 
         thread.start(self.backend.clone(), config.timeout_s)?;
 
-        return Success!();
+        return success!();
     }
 
     /// Stop the module
@@ -239,7 +239,7 @@ impl module::Module for Battery {
     /// # Arguments
     ///
     /// * `self` - The instance handle
-    fn stop(&mut self) -> error::CerebroResult {
+    fn stop(&mut self) -> error::Return {
         let mut thread = match self.thread.lock() {
             Ok(t) => t,
             Err(_) => return error!("Cannot lock thread"),
@@ -247,7 +247,7 @@ impl module::Module for Battery {
 
         thread.stop()?;
 
-        return Success!();
+        return success!();
     }
 
     /// Check if module is running

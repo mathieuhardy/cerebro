@@ -2,7 +2,7 @@ use std::error;
 use std::fmt;
 
 /// A type to be used for the return of basic methods
-pub type CerebroResult = Result<(), CerebroError>;
+pub type Return = Result<(), CerebroError>;
 
 /// A struture used to report errors
 #[derive(Debug)]
@@ -36,7 +36,7 @@ macro_rules! error {
 }
 
 #[macro_export]
-macro_rules! Success {
+macro_rules! success {
     () => {
         Ok(())
     }

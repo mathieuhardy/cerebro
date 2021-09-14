@@ -192,13 +192,13 @@ impl CpuBackend {
     }
 
     /// Start system stats monitoring
-    fn start_monitoring(&mut self) -> error::CerebroResult {
+    fn start_monitoring(&mut self) -> error::Return {
         self.cpu_stats = match self.system_stats.cpu_load() {
             Ok(cpu)=> Some(cpu),
             Err(_) => return error!("Cannot get CPU load"),
         };
 
-        return Success!();
+        return success!();
     }
 
     /// Update physical CPU data and filesystem
@@ -328,7 +328,7 @@ impl CpuBackend {
     }
 
     /// Update physical timestamp
-    fn update_physical_timestamp(&mut self) -> error::CerebroResult {
+    fn update_physical_timestamp(&mut self) -> error::Return {
 
         let old_value = self.data.physical_timestamp.clone();
 
@@ -346,7 +346,7 @@ impl CpuBackend {
             &old_value,
             &self.data.physical_timestamp);
 
-        return Success!();
+        return success!();
     }
 
     /// Update logical CPU data and filesystem
@@ -394,7 +394,7 @@ impl CpuBackend {
     }
 
     /// Update logical timestamp
-    fn update_logical_timestamp(&mut self) -> error::CerebroResult {
+    fn update_logical_timestamp(&mut self) -> error::Return {
 
         let old_value = self.data.logical_timestamp.clone();
 
@@ -412,12 +412,12 @@ impl CpuBackend {
             &old_value,
             &self.data.logical_timestamp);
 
-        return Success!();
+        return success!();
     }
 
     /// Update logical CPU averrage
     fn update_logical_cpu_averrage(&mut self, cpu_list: &Vec<CPULoad>)
-        -> error::CerebroResult {
+        -> error::Return {
 
         let mut sum: f32 = 0.0;
 
@@ -430,7 +430,7 @@ impl CpuBackend {
         let averrage = format!("{}", sum / (cpu_count as f32));
 
         if self.data.logical_averrage_usage == averrage {
-            return Success!();
+            return success!();
         }
 
         // Update data
@@ -449,7 +449,7 @@ impl CpuBackend {
             &old_value,
             &self.data.logical_averrage_usage);
 
-        return Success!();
+        return success!();
     }
 
     /// Update logical CPU count
@@ -483,7 +483,7 @@ impl CpuBackend {
 
     /// Rebuild logical CPU data
     fn rebuild_logical_data(&mut self, cpu_list: &Vec<CPULoad>)
-        -> error::CerebroResult {
+        -> error::Return {
 
         // Call delete triggers
         for (index, _data) in self.data.logical_list.iter().enumerate() {
@@ -514,12 +514,12 @@ impl CpuBackend {
                 "");
         }
 
-        return Success!();
+        return success!();
     }
 
     /// Update logical CPU data
     fn update_logical_data(&mut self, cpu_list: &Vec<CPULoad>)
-        -> error::CerebroResult {
+        -> error::Return {
 
         if cpu_list.len() != self.data.logical_list.len() {
             return error!("Cannot update data with a different size");
@@ -546,12 +546,12 @@ impl CpuBackend {
                 &self.data.logical_list[index].usage_percent);
         }
 
-        return Success!();
+        return success!();
     }
 
     /// Rebuild logical CPU filesystem
     fn rebuild_logical_filesystem(&mut self, cpu_count: usize)
-        -> error::CerebroResult {
+        -> error::Return {
 
         self.logical_fs_entries.clear();
 
@@ -572,7 +572,7 @@ impl CpuBackend {
                     ]));
         }
 
-        return Success!();
+        return success!();
     }
 }
 
@@ -647,7 +647,7 @@ impl module::Module for Cpu {
     /// # Arguments
     ///
     /// * `self` - The instance handle
-    fn start(&mut self, config: &config::ModuleConfig) -> error::CerebroResult {
+    fn start(&mut self, config: &config::ModuleConfig) -> error::Return {
         let mut backend = match self.backend.lock() {
             Ok(b) => b,
             Err(_) => return error!("Cannot lock backend"),
@@ -662,7 +662,7 @@ impl module::Module for Cpu {
 
         thread.start(self.backend.clone(), config.timeout_s)?;
 
-        return Success!();
+        return success!();
     }
 
     /// Stop the module
@@ -670,7 +670,7 @@ impl module::Module for Cpu {
     /// # Arguments
     ///
     /// * `self` - The instance handle
-    fn stop(&mut self) -> error::CerebroResult {
+    fn stop(&mut self) -> error::Return {
         let mut thread = match self.thread.lock() {
             Ok(t) => t,
             Err(_) => return error!("Cannot lock thread"),
@@ -678,7 +678,7 @@ impl module::Module for Cpu {
 
         thread.stop()?;
 
-        return Success!();
+        return success!();
     }
 
     /// Check if module is running

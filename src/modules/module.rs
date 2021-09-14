@@ -20,9 +20,9 @@ pub enum Status
 pub trait Module: Send {
     fn name(&self) -> &str;
 
-    fn start(&mut self, config: &config::ModuleConfig) -> error::CerebroResult;
+    fn start(&mut self, config: &config::ModuleConfig) -> error::Return;
 
-    fn stop(&mut self) -> error::CerebroResult;
+    fn stop(&mut self) -> error::Return;
 
     fn is_running(&self) -> bool;
 
@@ -61,11 +61,11 @@ impl Thread {
     pub fn start(
         &mut self,
         data: Arc<Mutex<dyn Data>>,
-        timeout_s: Option<u64>) -> error::CerebroResult {
+        timeout_s: Option<u64>) -> error::Return {
 
         // Check status
         if self.running.load(Ordering::SeqCst) {
-            return Success!();
+            return success!();
         }
 
         self.running.store(true, Ordering::SeqCst);
@@ -143,14 +143,14 @@ impl Thread {
             thread::sleep(time::Duration::from_secs(timeout_s));
         }));
 
-        return Success!();
+        return success!();
     }
 
-    pub fn stop(&mut self) -> error::CerebroResult {
+    pub fn stop(&mut self) -> error::Return {
         // Send stop signal to the thread
         let stopper = match &self.stopper {
             Some(s) => s,
-            None => return Success!(),
+            None => return success!(),
         };
 
         let stopper = match stopper.lock() {
@@ -167,7 +167,7 @@ impl Thread {
         // Wait the thread to finish
         let handle = match self.handle.take() {
             Some(h) => h,
-            None => return Success!(),
+            None => return success!(),
         };
 
         match handle.join() {
@@ -175,7 +175,7 @@ impl Thread {
             Err(_) => return error!("Cannot join thread"),
         }
 
-        return Success!();
+        return success!();
     }
 
     pub fn is_running(&self) -> bool {

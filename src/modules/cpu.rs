@@ -15,6 +15,7 @@ use crate::triggers;
 
 const MODULE_NAME: &str = "cpu";
 
+const ENTRY_AVERRAGE: &str = "averrage";
 const ENTRY_COUNT: &str = "count";
 const ENTRY_LOGICAL: &str = "logical";
 const ENTRY_PHYSICAL: &str = "physical";
@@ -61,6 +62,7 @@ impl PhysicalData {
 #[derive(Serialize)]
 struct CpuListData {
     pub logical_timestamp: String,
+    pub logical_averrage_usage: String,
     pub logical_count: String,
     pub logical_list: Vec<LogicalData>,
 
@@ -75,6 +77,7 @@ impl CpuListData {
         Self {
             logical_timestamp: "0".to_string(),
             logical_count: "0".to_string(),
+            logical_averrage_usage: "0".to_string(),
             logical_list: Vec::new(),
             physical_timestamp: "0".to_string(),
             physical_count: "0".to_string(),
@@ -92,6 +95,8 @@ struct CpuBackend {
 
     pub inode_logical_timestamp: u64,
     pub inode_physical_timestamp: u64,
+    pub inode_logical_averrage: u64,
+    pub inode_logical_averrage_usage: u64,
     pub inode_logical_count: u64,
     pub inode_physical_count: u64,
     pub data: CpuListData,
@@ -104,6 +109,8 @@ impl CpuBackend {
     /// CpuBackend constructor
     fn new(triggers: &Vec<triggers::Trigger>) -> Self {
         let logical = filesystem::FsEntry::create_inode();
+        let logical_averrage = filesystem::FsEntry::create_inode();
+        let logical_averrage_usage = filesystem::FsEntry::create_inode();
         let logical_count = filesystem::FsEntry::create_inode();
         let logical_timestamp = filesystem::FsEntry::create_inode();
         let physical = filesystem::FsEntry::create_inode();
@@ -117,6 +124,8 @@ impl CpuBackend {
             triggers: triggers.to_vec(),
             inode_logical_timestamp: logical_timestamp,
             inode_physical_timestamp: physical_timestamp,
+            inode_logical_averrage: logical_averrage,
+            inode_logical_averrage_usage: logical_averrage_usage,
             inode_logical_count: logical_count,
             inode_physical_count: physical_count,
             data: CpuListData::new(),
@@ -127,6 +136,20 @@ impl CpuBackend {
                     ENTRY_LOGICAL,
                     filesystem::Mode::ReadOnly,
                     &vec![
+                        filesystem::FsEntry::new(
+                            logical_averrage,
+                            fuse::FileType::Directory,
+                            ENTRY_AVERRAGE,
+                            filesystem::Mode::ReadOnly,
+                            &vec![
+                                filesystem::FsEntry::new(
+                                    logical_averrage_usage,
+                                    fuse::FileType::RegularFile,
+                                    ENTRY_USAGE,
+                                    filesystem::Mode::ReadOnly,
+                                    &Vec::new()),
+                            ]),
+
                         filesystem::FsEntry::new(
                             logical_count,
                             fuse::FileType::RegularFile,
@@ -347,6 +370,9 @@ impl CpuBackend {
             Err(_) => return error!("Cannot read CPU load"),
         };
 
+        // Update CPU averrage if needed
+        self.update_logical_cpu_averrage(&cpu)?;
+
         // Update CPU count if needed
         let status = self.update_logical_cpu_count(&cpu)?;
 
@@ -385,6 +411,43 @@ impl CpuBackend {
             &format!("{}/{}", ENTRY_LOGICAL, ENTRY_TIMESTAMP),
             &old_value,
             &self.data.logical_timestamp);
+
+        return Success!();
+    }
+
+    /// Update logical CPU averrage
+    fn update_logical_cpu_averrage(&mut self, cpu_list: &Vec<CPULoad>)
+        -> error::CerebroResult {
+
+        let mut sum: f32 = 0.0;
+
+        let cpu_count = cpu_list.len();
+
+        for c in cpu_list.iter() {
+            sum += c.user * 100f32;
+        }
+
+        let averrage = format!("{}", sum / (cpu_count as f32));
+
+        if self.data.logical_averrage_usage == averrage {
+            return Success!();
+        }
+
+        // Update data
+        let old_value = self.data.logical_averrage_usage.clone();
+
+        self.data.logical_averrage_usage = format!("{}", averrage);
+
+        log::debug!("CPU usage averrage: {}", averrage);
+
+        // Call triggers if needed
+        triggers::find_all_and_execute(
+            &self.triggers,
+            triggers::Kind::Update,
+            MODULE_NAME,
+            &format!("{}/{}/{}", ENTRY_LOGICAL, ENTRY_AVERRAGE, ENTRY_USAGE),
+            &old_value,
+            &self.data.logical_averrage_usage);
 
         return Success!();
     }
@@ -762,9 +825,12 @@ impl module::Module for Cpu {
         };
 
         let mut output: String = format!(
-            "logical_cpu_count={} physical_cpu_count={}",
+            "logical_cpu_count={} logical_averrage_usage={}",
             backend.data.logical_count,
-            backend.data.physical_count);
+            backend.data.logical_averrage_usage);
+
+        output +=
+            &format!(" physical_cpu_count={}", backend.data.physical_count);
 
         for (index, cpu) in backend.data.logical_list.iter().enumerate() {
             output += &format!(

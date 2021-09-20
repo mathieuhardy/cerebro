@@ -22,6 +22,7 @@ use std::sync::Mutex;
 use modules::cpu;
 use modules::battery;
 use modules::brightness;
+use modules::memory;
 use modules::Module;
 use modules::trash;
 
@@ -140,6 +141,10 @@ fn main() {
         &triggers))));
 
     modules.push(Arc::new(Mutex::new(brightness::Brightness::new(
+        &mut event_manager,
+        &triggers))));
+
+    modules.push(Arc::new(Mutex::new(memory::Memory::new(
         &mut event_manager,
         &triggers))));
 
